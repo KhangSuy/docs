@@ -1,126 +1,135 @@
-<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>Kiểm chứng báo cáo sự cố</title><style>
-:root{color-scheme:light;font:16px/1.55 "Segoe UI",Arial,sans-serif;color:#193541;background:#f3f5f4}*{box-sizing:border-box}body{margin:0}main{max-width:750px;margin:auto;background:#fff;padding:clamp(20px,5vw,48px);min-height:100vh}h1{font-size:clamp(1.7rem,4vw,2.35rem);line-height:1.15;margin:0 0 .5em}h2{font-size:1.1em;margin:0 0 .55rem}p{margin:.6em 0}header{border-top:6px solid #16746a;padding:1.3rem 0 1rem}section{border-top:1px solid #cfdbd8;padding:1.1rem 0}label{font-weight:600;display:block;margin:.4rem 0}select,button,textarea{font:inherit}select{max-width:100%;width:100%;padding:.6rem;color:inherit;background:white;border:1px solid #8ca6a2;border-radius:5px}button{color:white;background:#135d55;border:0;border-radius:5px;padding:.6rem 1rem;cursor:pointer;font-weight:600}summary{cursor:pointer;color:#125c56;font-weight:600;margin:.7rem 0}textarea,pre{white-space:pre-wrap;overflow-wrap:anywhere;font:.85rem/1.55 Consolas,monospace;background:#f3f6f5;border:1px solid #d7e3e0;border-radius:5px;padding:.8rem}textarea{width:100%;min-height:6rem}ul{padding-left:1.3rem}li{margin:.35rem 0}small{color:#50676e}</style></head><body><main>
-<header><h1>Kiểm chứng báo cáo sự cố</h1><p>Dữ liệu mẫu mô phỏng lỗi game lúc 21:03 ngày 20/11/2026 (UTC+7). Mỗi dòng JSON biểu diễn một sự kiện. Bản thử chỉ đọc mẫu đã chuẩn hóa và xử lý ngay trên máy.</p></header>
-<noscript>Hãy mở file trong trình duyệt có bật JavaScript để chạy bản thử.</noscript>
-<section><label for="scenario">Chọn tình huống</label><select id="scenario"><option value="base">Dịch vụ dừng lúc 21:02, game báo lỗi lúc 21:03</option><option value="old">Dịch vụ đã dừng từ 19:00</option><option value="private">Đổi token và ghi chú riêng tư</option><option value="missing">Xóa dòng ghi nhận dịch vụ dừng</option></select>
-<details><summary>Xem và sửa dữ liệu mẫu</summary><label for="client">Log client</label><textarea spellcheck="false" id="client"></textarea><label for="windows">Sự kiện Windows đã chuẩn hóa</label><textarea spellcheck="false" id="windows"></textarea></details></section>
-<section><h2>Báo cáo để chia sẻ</h2><p id="counts"></p><ul id="events"></ul><small>Báo cáo liệt kê các sự kiện gần nhau về thời gian. Việc xác định nguyên nhân cần thêm bằng chứng.</small><details><summary>Xem nội dung file JSON</summary><pre id="preview"></pre></details><button id="download" type="button">Tải báo cáo JSON</button></section>
-<section><h2>Kiểm tra trên mẫu chuẩn</h2><details><summary id="checked">Đang kiểm tra…</summary><ul id="tests"></ul></details></section>
-</main><script>"use strict";
-const incident = "2026-11-20T21:03:00+07:00";
-const cutoff = Date.parse(incident);
-const eventLabels = {
-  launch_failed: "Client báo lỗi khởi chạy",
-  service_stopped: "Ghi nhận dịch vụ vgc dừng"
-};
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Đọc log VALORANT và Riot Client</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.55 "Segoe UI", Arial, sans-serif; color: #193541; background: #f1f5f4; }
+    * { box-sizing: border-box; } body { margin: 0; }
+    main { max-width: 840px; margin: 2rem auto; padding: clamp(1.2rem,4vw,3rem); border-top: 5px solid #176c61; background: white; }
+    h1 { margin: 0; font-size: clamp(1.7rem,4vw,2.5rem); line-height: 1.18; } h2 { font-size: 1.2rem; }
+    p { margin: .65rem 0 1.1rem; } #drop { padding: 1.5rem; border: 2px dashed #789e97; border-radius: 8px; background: #f6faf9; }
+    #drop.active { background: #d8eee9; border-color: #18675c; } input,button { max-width: 100%; font: inherit; }
+    input::file-selector-button,button { padding: .55rem .9rem; border: 0; border-radius: 5px; background: #176759; color: white; cursor: pointer; }
+    label { display: block; font-weight: 650; margin-bottom: .55rem; } code { overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: repeat(auto-fit,minmax(8rem,1fr)); gap: .8rem; }
+    dl div { background: #f2f6f5; padding: .6rem .85rem; } dt { font-size: .9rem; } dd { margin: 0; font-weight: 650; font-size: 1.4rem; }
+    .scroll { overflow-x: auto; } table { width: 100%; border-collapse: collapse; } th,td { text-align: left; padding: .45rem; border-bottom: 1px solid #d2dfda; } th { white-space: nowrap; } [hidden] { display: none !important; }
+    @media(max-width:580px) { main { margin:0; } }
+  </style>
+</head>
+<body><main>
+  <h1>Đọc log VALORANT và Riot Client</h1>
+  <p>Chọn tệp trên máy để tìm các dòng cảnh báo và lỗi. Tệp được xử lý ngay trong trình duyệt.</p>
+  <div id="drop">
+    <label for="file">Chọn hoặc kéo thả một tệp .log hoặc .txt</label>
+    <input type="file" id="file" accept=".log,.txt,text/plain" aria-describedby="formats">
+    <p id="formats">Tối đa 32 MiB. Hỗ trợ UTF-8 và UTF-16 có BOM.</p>
+  </div>
+  <details><summary>Tìm log VALORANT trên Windows</summary>
+    <p>Dán <code>%LOCALAPPDATA%\VALORANT\Saved\Logs</code> vào thanh địa chỉ của File Explorer rồi kéo tệp <code>.log</code> vào khung trên.</p>
+  </details>
+  <p id="status" role="status" aria-live="polite">Chưa chọn tệp.</p>
+  <section id="result" hidden>
+    <h2>Tóm tắt</h2>
+    <dl id="counts"></dl>
+    <p id="sources"></p>
+    <button id="download" type="button">Tải báo cáo JSON</button>
+    <h2>Cảnh báo và lỗi theo thứ tự trong tệp</h2>
+    <p id="note"></p>
+    <div class="scroll"><table id="table"><thead><tr><th>Dòng</th><th>Nguồn</th><th>Mốc trong log</th><th>Mức</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+  <noscript>Bật JavaScript để đọc tệp trong trình duyệt.</noscript>
+</main>
+<script src="log-parser.js"></script>
+<script>
+"use strict";
+const byId = id => document.getElementById(id);
+const drop = byId("drop");
+const statusText = byId("status");
+let pending = null;
+let currentReport = null;
 
-function sample() {
-  return {
-    client: JSON.stringify({ time: incident, event: "launch_failed", sessionToken: "DEMO_TOKEN_A", note: "DEMO_PRIVATE_A" }),
-    windows: JSON.stringify({ time: "2026-11-20T21:02:00+07:00", event: "service_stopped", service: "vgc" })
-  };
-}
-
-// Only normalized timestamps, fixed event codes and line numbers can enter a report.
-function makeReport(input) {
-  const events = [];
-  let unreadable = 0;
-  for (const source of ["client", "windows"]) {
-    const lines = input[source].split(/\r?\n/);
-    for (const [index, line] of lines.entries()) {
-      if (!line.trim()) continue;
-      let record;
-      try { record = JSON.parse(line); } catch { unreadable++; continue; }
-      const time = record?.time;
-      if (typeof time !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(time) || !Number.isFinite(Date.parse(time))) {
-        unreadable++;
-        continue;
-      }
-      const ms = Date.parse(time);
-      if (ms < cutoff - 120000 || ms > cutoff) continue;
-      const allowed = source === "client" ? record.event === "launch_failed" :
-        record.event === "service_stopped" && record.service === "vgc";
-      if (!allowed) { unreadable++; continue; }
-      events.push({ source, line: index + 1, utc: new Date(ms).toISOString(), event: record.event });
-    }
-  }
-  events.sort((a, b) => a.utc.localeCompare(b.utc));
-  return { sample: true, incident_utc: new Date(cutoff).toISOString(), unreadable_lines: unreadable, events };
-}
-
-function exportText(input) {
-  return JSON.stringify(makeReport(input), null, 2) + "\n";
-}
-
-function reportBlob(input) {
-  return new Blob([exportText(input)], { type: "application/json;charset=utf-8" });
-}
-
-function changeRow(input, source, fields) {
-  return { ...input, [source]: JSON.stringify({ ...JSON.parse(input[source]), ...fields }) };
-}
-
-async function runChecks(readBack) {
-  const base = sample();
-  const baseline = await readBack(base);
-  const baselineData = JSON.parse(baseline);
-  async function onlyClient(input, expectedUnreadable) {
-    const data = JSON.parse(await readBack(input));
-    return data.events.length === 1 && data.events[0].event === "launch_failed" && data.unreadable_lines === expectedUnreadable;
-  }
-  const tests = [
-    ["Giữ đúng hai sự kiện và thứ tự thời gian", baselineData.events.map(e => e.event).join(",") === "service_stopped,launch_failed" && baselineData.unreadable_lines === 0],
-    ["Giữ mã sự kiện, loại token và ghi chú mẫu", baseline.includes("launch_failed") && !baseline.includes("DEMO_TOKEN_A") && !baseline.includes("DEMO_PRIVATE_A")],
-    ["Đổi token và ghi chú, file xuất giữ nguyên từng byte", await readBack(changeRow(base, "client", { sessionToken: "DEMO_TOKEN_B", note: "DEMO_PRIVATE_B" })) === baseline],
-    ["Thêm trường riêng tư ngoài danh sách, file xuất giữ nguyên", await readBack(changeRow(base, "windows", { privateField: "DEMO_PRIVATE_C" })) === baseline],
-    ["Sự kiện lúc 19:00 nằm ngoài khoảng của lỗi 21:03", await onlyClient(changeRow(base, "windows", { time: "2026-11-20T19:00:00+07:00" }), 0)],
-    ["Bỏ dòng vgc thì sự kiện tương ứng biến mất", await onlyClient({ ...base, windows: "" }, 0)],
-    ["Dòng bị cắt được đếm và bỏ qua", await onlyClient({ ...base, windows: '{"time":"DEMO_INCOMPLETE' }, 1)],
-    ["Định dạng sự kiện lạ được đếm và bỏ qua", await onlyClient(changeRow(base, "windows", { event: "DEMO_UNRECOGNIZED" }), 1)]
-  ];
-  return tests;
-}
-const el = id => document.getElementById(id);
-function currentInput() { return { client: el("client").value, windows: el("windows").value }; }
-function refresh() {
-  const input = currentInput();
-  const report = makeReport(input);
-  const rows = report.events.map(event => {
-    const li = document.createElement("li");
-    const local = event.utc.slice(11, 16);
-    li.textContent = local + " UTC  ·  " + eventLabels[event.event] + "  ·  " + event.source + ", dòng " + event.line;
-    return li;
-  });
-  el("events").replaceChildren(...rows);
-  el("counts").textContent = report.events.length + " sự kiện trong khoảng 21:01–21:03 (UTC+7). Dòng chưa nhận diện: " + report.unreadable_lines + ".";
-  el("preview").textContent = exportText(input);
-}
-function setSample(scenario) {
-  const base = sample();
-  let data = base;
-  if (scenario === "old") data = changeRow(base, "windows", { time: "2026-11-20T19:00:00+07:00" });
-  if (scenario === "private") data = changeRow(base, "client", { sessionToken: "DEMO_TOKEN_B", note: "DEMO_PRIVATE_B" });
-  if (scenario === "missing") data = { ...base, windows: "" };
-  el("client").value = data.client;
-  el("windows").value = data.windows;
-  refresh();
-}
-el("scenario").onchange = event => setSample(event.target.value);
-for (const name of ["client", "windows"]) el(name).oninput = refresh;
-el("download").onclick = () => {
-  const url = URL.createObjectURL(reportBlob(currentInput()));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "bao-cao-su-co-mau.json";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
-};
-setSample("base");
-runChecks(input => reportBlob(input).text()).then(checks => {
-  el("checked").textContent = checks.filter(([, ok]) => ok).length + "/" + checks.length + " phép thử đạt";
-  el("tests").replaceChildren(...checks.map(([label, ok]) => {
-    const item = document.createElement("li");
-    item.textContent = (ok ? "Đạt · " : "Lỗi · ") + label;
-    return item;
+function render(report) {
+  const counts = [["Tổng dòng", report.lines], ["Thông tin", report.info], ["Cảnh báo", report.warnings],
+    ["Lỗi", report.errors], ["Chưa nhận diện", report.unrecognized], ["Dòng trắng", report.blank]];
+  byId("counts").replaceChildren(...counts.map(([label, count]) => {
+    const block = document.createElement("div");
+    const term = document.createElement("dt");
+    const value = document.createElement("dd");
+    term.textContent = label; value.textContent = count;
+    block.append(term, value); return block;
   }));
-}).catch(() => { el("checked").textContent = "Không chạy được phép thử trên trình duyệt này"; });</script></body></html>
+  byId("sources").textContent = "Dòng nhận diện được · Riot Client: " + report.sources["Riot Client"] + " · Unreal: " + report.sources.Unreal;
+  const total = report.warnings + report.errors;
+  byId("note").textContent = total ? "Đang liệt kê " + report.entries.length + " trên " + total + " cảnh báo và lỗi." : "Không có cảnh báo hoặc lỗi trong các dòng nhận diện được.";
+  byId("table").hidden = !total;
+  byId("rows").replaceChildren(...report.entries.map(entry => {
+    const tr = document.createElement("tr");
+    for (const value of [entry.line, entry.source, entry.time || "—", entry.level]) {
+      const td = document.createElement("td"); td.textContent = value; tr.append(td);
+    }
+    return tr;
+  }));
+  byId("result").hidden = false;
+}
+
+function readFiles(files) {
+  if (!files.length) return;
+  if (pending) { pending.abort(); pending = null; }
+  currentReport = null;
+  byId("result").hidden = true;
+  if (files.length !== 1) { statusText.textContent = "Chọn từng tệp để có báo cáo riêng."; return; }
+  const file = files[0];
+  if (!/\.(log|txt)$/i.test(file.name)) { statusText.textContent = "Hãy chọn một tệp .log hoặc .txt."; return; }
+  if (file.size > 32 * 1024 * 1024) { statusText.textContent = "Tệp vượt giới hạn 32 MiB."; return; }
+  const reader = new FileReader();
+  pending = reader;
+  statusText.textContent = "Đang đọc " + file.name + "…";
+  reader.onload = () => {
+    if (pending !== reader) return;
+    pending = null;
+    try {
+      const report = parseLog(decodeLog(reader.result));
+      render(report);
+      currentReport = report;
+      statusText.textContent = !report.lines ? "Tệp trống." :
+        report.info + report.warnings + report.errors === 0 ? "Đã đọc tệp nhưng chưa nhận diện được dòng log hỗ trợ." :
+        "Đã đọc xong: " + file.name;
+    } catch (error) {
+      statusText.textContent = "Không đọc được văn bản. Hãy dùng tệp UTF-8 hoặc UTF-16 có BOM.";
+    }
+  };
+  reader.onerror = () => {
+    if (pending !== reader) return;
+    pending = null;
+    statusText.textContent = "Trình duyệt không mở được tệp. Hãy chọn lại.";
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+byId("file").addEventListener("change", event => {
+  readFiles(event.target.files);
+  event.target.value = "";
+});
+window.addEventListener("dragover", event => event.preventDefault());
+window.addEventListener("drop", event => event.preventDefault());
+drop.addEventListener("dragover", event => { event.preventDefault(); drop.classList.add("active"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("active"));
+drop.addEventListener("drop", event => {
+  event.preventDefault();
+  drop.classList.remove("active");
+  readFiles(event.dataTransfer.files);
+});
+byId("download").addEventListener("click", () => {
+  if (!currentReport) return;
+  const bytes = new Blob([JSON.stringify(currentReport, null, 2) + "\n"], {type: "application/json"});
+  const url = URL.createObjectURL(bytes);
+  const link = document.createElement("a");
+  link.href = url; link.download = "bao-cao-log.json"; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+});
+</script>
+</body></html>
