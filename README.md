@@ -1,5 +1,9 @@
 # Mintlify Starter Kit
 
+## Demo báo cáo sự cố game
+
+[Chạy thử bộ phân tích log bằng Python](riot-log-demo/README.md) hoặc [xem mã nguồn](riot-log-demo/parser.py). Bản demo dùng dữ liệu giả lập để đối chiếu thời điểm dịch vụ dừng với lỗi khởi chạy game.
+
 Use the starter kit to get your docs deployed and ready to customize.
 
 Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
