@@ -31,3 +31,7 @@ Dùng Node.js 18 trở lên, chạy `node --test log-parser.test.cjs` tại thư
 ## Bản đối chiếu JSONL
 
 [Hướng dẫn chạy parser Python và bộ mẫu JSONL](normalized-README.md).
+
+## Tải repo Git độc lập
+
+[Tải riot-log-reader.bundle](https://raw.githubusercontent.com/KhangSuy/docs/main/riot-log-demo/riot-log-reader.bundle), rồi chạy `git clone riot-log-reader.bundle riot-log-reader`. Bản này có nhánh `main`, lịch sử Git riêng, giao diện đọc log và bộ kiểm thử.
