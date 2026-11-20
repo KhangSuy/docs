@@ -1,0 +1,126 @@
+<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>Kiểm chứng báo cáo sự cố</title><style>
+:root{color-scheme:light;font:16px/1.55 "Segoe UI",Arial,sans-serif;color:#193541;background:#f3f5f4}*{box-sizing:border-box}body{margin:0}main{max-width:750px;margin:auto;background:#fff;padding:clamp(20px,5vw,48px);min-height:100vh}h1{font-size:clamp(1.7rem,4vw,2.35rem);line-height:1.15;margin:0 0 .5em}h2{font-size:1.1em;margin:0 0 .55rem}p{margin:.6em 0}header{border-top:6px solid #16746a;padding:1.3rem 0 1rem}section{border-top:1px solid #cfdbd8;padding:1.1rem 0}label{font-weight:600;display:block;margin:.4rem 0}select,button,textarea{font:inherit}select{max-width:100%;width:100%;padding:.6rem;color:inherit;background:white;border:1px solid #8ca6a2;border-radius:5px}button{color:white;background:#135d55;border:0;border-radius:5px;padding:.6rem 1rem;cursor:pointer;font-weight:600}summary{cursor:pointer;color:#125c56;font-weight:600;margin:.7rem 0}textarea,pre{white-space:pre-wrap;overflow-wrap:anywhere;font:.85rem/1.55 Consolas,monospace;background:#f3f6f5;border:1px solid #d7e3e0;border-radius:5px;padding:.8rem}textarea{width:100%;min-height:6rem}ul{padding-left:1.3rem}li{margin:.35rem 0}small{color:#50676e}</style></head><body><main>
+<header><h1>Kiểm chứng báo cáo sự cố</h1><p>Dữ liệu mẫu mô phỏng lỗi game lúc 21:03 ngày 20/11/2026 (UTC+7). Mỗi dòng JSON biểu diễn một sự kiện. Bản thử chỉ đọc mẫu đã chuẩn hóa và xử lý ngay trên máy.</p></header>
+<noscript>Hãy mở file trong trình duyệt có bật JavaScript để chạy bản thử.</noscript>
+<section><label for="scenario">Chọn tình huống</label><select id="scenario"><option value="base">Dịch vụ dừng lúc 21:02, game báo lỗi lúc 21:03</option><option value="old">Dịch vụ đã dừng từ 19:00</option><option value="private">Đổi token và ghi chú riêng tư</option><option value="missing">Xóa dòng ghi nhận dịch vụ dừng</option></select>
+<details><summary>Xem và sửa dữ liệu mẫu</summary><label for="client">Log client</label><textarea spellcheck="false" id="client"></textarea><label for="windows">Sự kiện Windows đã chuẩn hóa</label><textarea spellcheck="false" id="windows"></textarea></details></section>
+<section><h2>Báo cáo để chia sẻ</h2><p id="counts"></p><ul id="events"></ul><small>Báo cáo liệt kê các sự kiện gần nhau về thời gian. Việc xác định nguyên nhân cần thêm bằng chứng.</small><details><summary>Xem nội dung file JSON</summary><pre id="preview"></pre></details><button id="download" type="button">Tải báo cáo JSON</button></section>
+<section><h2>Kiểm tra trên mẫu chuẩn</h2><details><summary id="checked">Đang kiểm tra…</summary><ul id="tests"></ul></details></section>
+</main><script>"use strict";
+const incident = "2026-11-20T21:03:00+07:00";
+const cutoff = Date.parse(incident);
+const eventLabels = {
+  launch_failed: "Client báo lỗi khởi chạy",
+  service_stopped: "Ghi nhận dịch vụ vgc dừng"
+};
+
+function sample() {
+  return {
+    client: JSON.stringify({ time: incident, event: "launch_failed", sessionToken: "DEMO_TOKEN_A", note: "DEMO_PRIVATE_A" }),
+    windows: JSON.stringify({ time: "2026-11-20T21:02:00+07:00", event: "service_stopped", service: "vgc" })
+  };
+}
+
+// Only normalized timestamps, fixed event codes and line numbers can enter a report.
+function makeReport(input) {
+  const events = [];
+  let unreadable = 0;
+  for (const source of ["client", "windows"]) {
+    const lines = input[source].split(/\r?\n/);
+    for (const [index, line] of lines.entries()) {
+      if (!line.trim()) continue;
+      let record;
+      try { record = JSON.parse(line); } catch { unreadable++; continue; }
+      const time = record?.time;
+      if (typeof time !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(time) || !Number.isFinite(Date.parse(time))) {
+        unreadable++;
+        continue;
+      }
+      const ms = Date.parse(time);
+      if (ms < cutoff - 120000 || ms > cutoff) continue;
+      const allowed = source === "client" ? record.event === "launch_failed" :
+        record.event === "service_stopped" && record.service === "vgc";
+      if (!allowed) { unreadable++; continue; }
+      events.push({ source, line: index + 1, utc: new Date(ms).toISOString(), event: record.event });
+    }
+  }
+  events.sort((a, b) => a.utc.localeCompare(b.utc));
+  return { sample: true, incident_utc: new Date(cutoff).toISOString(), unreadable_lines: unreadable, events };
+}
+
+function exportText(input) {
+  return JSON.stringify(makeReport(input), null, 2) + "\n";
+}
+
+function reportBlob(input) {
+  return new Blob([exportText(input)], { type: "application/json;charset=utf-8" });
+}
+
+function changeRow(input, source, fields) {
+  return { ...input, [source]: JSON.stringify({ ...JSON.parse(input[source]), ...fields }) };
+}
+
+async function runChecks(readBack) {
+  const base = sample();
+  const baseline = await readBack(base);
+  const baselineData = JSON.parse(baseline);
+  async function onlyClient(input, expectedUnreadable) {
+    const data = JSON.parse(await readBack(input));
+    return data.events.length === 1 && data.events[0].event === "launch_failed" && data.unreadable_lines === expectedUnreadable;
+  }
+  const tests = [
+    ["Giữ đúng hai sự kiện và thứ tự thời gian", baselineData.events.map(e => e.event).join(",") === "service_stopped,launch_failed" && baselineData.unreadable_lines === 0],
+    ["Giữ mã sự kiện, loại token và ghi chú mẫu", baseline.includes("launch_failed") && !baseline.includes("DEMO_TOKEN_A") && !baseline.includes("DEMO_PRIVATE_A")],
+    ["Đổi token và ghi chú, file xuất giữ nguyên từng byte", await readBack(changeRow(base, "client", { sessionToken: "DEMO_TOKEN_B", note: "DEMO_PRIVATE_B" })) === baseline],
+    ["Thêm trường riêng tư ngoài danh sách, file xuất giữ nguyên", await readBack(changeRow(base, "windows", { privateField: "DEMO_PRIVATE_C" })) === baseline],
+    ["Sự kiện lúc 19:00 nằm ngoài khoảng của lỗi 21:03", await onlyClient(changeRow(base, "windows", { time: "2026-11-20T19:00:00+07:00" }), 0)],
+    ["Bỏ dòng vgc thì sự kiện tương ứng biến mất", await onlyClient({ ...base, windows: "" }, 0)],
+    ["Dòng bị cắt được đếm và bỏ qua", await onlyClient({ ...base, windows: '{"time":"DEMO_INCOMPLETE' }, 1)],
+    ["Định dạng sự kiện lạ được đếm và bỏ qua", await onlyClient(changeRow(base, "windows", { event: "DEMO_UNRECOGNIZED" }), 1)]
+  ];
+  return tests;
+}
+const el = id => document.getElementById(id);
+function currentInput() { return { client: el("client").value, windows: el("windows").value }; }
+function refresh() {
+  const input = currentInput();
+  const report = makeReport(input);
+  const rows = report.events.map(event => {
+    const li = document.createElement("li");
+    const local = event.utc.slice(11, 16);
+    li.textContent = local + " UTC  ·  " + eventLabels[event.event] + "  ·  " + event.source + ", dòng " + event.line;
+    return li;
+  });
+  el("events").replaceChildren(...rows);
+  el("counts").textContent = report.events.length + " sự kiện trong khoảng 21:01–21:03 (UTC+7). Dòng chưa nhận diện: " + report.unreadable_lines + ".";
+  el("preview").textContent = exportText(input);
+}
+function setSample(scenario) {
+  const base = sample();
+  let data = base;
+  if (scenario === "old") data = changeRow(base, "windows", { time: "2026-11-20T19:00:00+07:00" });
+  if (scenario === "private") data = changeRow(base, "client", { sessionToken: "DEMO_TOKEN_B", note: "DEMO_PRIVATE_B" });
+  if (scenario === "missing") data = { ...base, windows: "" };
+  el("client").value = data.client;
+  el("windows").value = data.windows;
+  refresh();
+}
+el("scenario").onchange = event => setSample(event.target.value);
+for (const name of ["client", "windows"]) el(name).oninput = refresh;
+el("download").onclick = () => {
+  const url = URL.createObjectURL(reportBlob(currentInput()));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "bao-cao-su-co-mau.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+};
+setSample("base");
+runChecks(input => reportBlob(input).text()).then(checks => {
+  el("checked").textContent = checks.filter(([, ok]) => ok).length + "/" + checks.length + " phép thử đạt";
+  el("tests").replaceChildren(...checks.map(([label, ok]) => {
+    const item = document.createElement("li");
+    item.textContent = (ok ? "Đạt · " : "Lỗi · ") + label;
+    return item;
+  }));
+}).catch(() => { el("checked").textContent = "Không chạy được phép thử trên trình duyệt này"; });</script></body></html>
