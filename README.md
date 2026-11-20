@@ -1,8 +1,8 @@
 # Mintlify Starter Kit
 
-## Demo báo cáo sự cố game
+## Đọc tệp log VALORANT và Riot Client
 
-[Chạy thử bộ phân tích log bằng Python](riot-log-demo/README.md) hoặc [xem mã nguồn](riot-log-demo/parser.py). Bản demo dùng dữ liệu giả lập để đối chiếu thời điểm dịch vụ dừng với lỗi khởi chạy game.
+[Mở dự án Riot Log Reader](riot-log-demo/README.md) để chọn hoặc kéo thả tệp log thật vào trình duyệt và xuất báo cáo cảnh báo, lỗi theo số dòng.
 
 Use the starter kit to get your docs deployed and ready to customize.
 

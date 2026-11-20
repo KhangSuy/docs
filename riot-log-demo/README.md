@@ -1,28 +1,33 @@
-# Đối chiếu log khi game báo lỗi khởi chạy
+# Riot Log Reader
 
-[parser.py](parser.py) đọc hai nguồn sự kiện JSONL đã chuẩn hóa. Với thời điểm lỗi do người dùng chọn, chương trình tìm các sự kiện trong hai phút trước đó, tính cả hai đầu mốc, rồi xuất danh sách theo thứ tự UTC. Hai sự kiện gần nhau về thời gian chưa đủ để kết luận nguyên nhân lỗi.
+Đọc **tệp log thô** của VALORANT (dạng Unreal) và Riot Client ngay trong trình duyệt. Chương trình đếm dòng thông tin, cảnh báo, lỗi, dòng trắng và dòng chưa nhận diện. Với mỗi cảnh báo hoặc lỗi, nó giữ số dòng gốc để người dùng có thể tìm lại trong trình soạn thảo.
 
-## Chạy thử
+## Chạy trên máy
 
-Trong thư mục này, dùng Python 3.8 trở lên để chạy mẫu giả lập có sẵn. Trên Windows có thể dùng `py` thay cho `python`.
+1. Tải mã nguồn về, giữ `index.html` và `log-parser.js` cùng thư mục, rồi mở `index.html` bằng Chrome, Edge hoặc Firefox.
+2. Chọn một tệp `.log` / `.txt` hoặc kéo thả vào khung trên trang. Trên Windows, mở `%LOCALAPPDATA%\VALORANT\Saved\Logs` để tìm log game.
+3. Xem số dòng theo từng mức. Chọn **Tải báo cáo JSON** nếu cần gửi kết quả. Báo cáo xuất số liệu thống kê và tối đa 200 cảnh báo/lỗi đầu tiên, với số dòng, nguồn, mốc thời gian và mức độ. Tên tệp, đường dẫn và nội dung thông báo gốc chỉ ở trên máy.
 
-```sh
-python parser.py
-```
+[Hướng dẫn tìm log của Riot Games](https://support.riotgames.com/en-us/valorant/support-tools/gathering-logs-in-valorant)
 
-Trong kết quả mẫu, dịch vụ `vgc` dừng lúc **14:02 UTC**, sau đó client báo lỗi khởi chạy lúc **14:03 UTC**. Trường `sample` là `true`. Bạn cũng có thể tải [index.html](index.html) về mở trong trình duyệt để thử đổi thời gian và xem báo cáo thay đổi.
+## Cách đọc tệp thật
 
-## Đọc hai tệp JSONL
+Hàm `readFiles` trong [index.html](index.html) nhận đối tượng `File` từ ô chọn tệp hoặc `event.dataTransfer.files` khi kéo thả. `FileReader.readAsArrayBuffer(file)` đọc các byte từ tệp vừa chọn. [log-parser.js](log-parser.js) dùng `TextDecoder` để giải mã UTF-8 hoặc UTF-16 có BOM, rồi tách từng dòng CRLF, LF hoặc CR. Toàn bộ bước này chạy cục bộ. Tệp tối đa 32 MiB.
 
-Mỗi dòng là một đối tượng JSON. Hai dòng dưới đây là **dữ liệu giả lập**. Lưu dòng đầu vào `client.jsonl` và dòng thứ hai vào `windows.jsonl`.
+| Định dạng | Parser đọc gì? |
+| --- | --- |
+| Riot Client | Đọc số giây đã trôi qua và mức độ ở đầu dòng phân cách bằng `\|`. Ví dụ tiền tố `000012.345\| WARN\|` được tính là một cảnh báo. |
+| Unreal | Đọc tiền tố dạng `[YYYY.MM.DD-HH.MM.SS:mmm][frame]LogCategory: Error:`. Dòng bắt đầu bằng `LogCategory:` cũng được nhận diện khi thiếu dấu thời gian. |
+| Dòng tiếp nối hoặc chưa hỗ trợ | Tăng bộ đếm chưa nhận diện. Từ “Error” xuất hiện giữa nội dung thông báo không làm thay đổi mức của dòng. |
 
-```jsonl
-{"time":"2026-11-20T21:03:00+07:00","event":"launch_failed"}
-{"time":"2026-11-20T21:02:00+07:00","event":"service_stopped","service":"vgc"}
-```
+Mốc thời gian Unreal được giữ theo tệp gốc. Thời gian tương đối của Riot Client có dấu `+`. Hai loại mốc này không được ghép thành một trục thời gian. Lỗi và cảnh báo là những gì ứng dụng nguồn ghi lại. Việc xác định nguyên nhân sự cố cần thêm ngữ cảnh.
 
-```sh
-python parser.py --client client.jsonl --windows windows.jsonl --incident 2026-11-20T21:03:00+07:00
-```
+## Kiểm thử
 
-Báo cáo chỉ xuất nguồn, số dòng, thời gian UTC và mã sự kiện cho từng dòng khớp. Các trường bổ sung như token và ghi chú không xuất hiện trong báo cáo. Dòng JSON hỏng, thời gian không hợp lệ và mã sự kiện lạ trong khoảng xét được đếm ở `unreadable_lines`. Dòng trắng và sự kiện có thời gian hợp lệ nằm ngoài khoảng xét được bỏ qua.
+Dùng Node.js 18 trở lên, chạy `node --test log-parser.test.cjs` tại thư mục này. Các bài kiểm tra bao phủ tiền tố raw, mã hóa, thứ tự và số dòng, giới hạn báo cáo và việc loại nội dung tự do khỏi JSON.
+
+Để kiểm tra trực tiếp với một tệp của bạn, chọn tệp rồi đối chiếu số dòng của một cảnh báo với trình soạn thảo. Chọn tệp khác để tạo báo cáo mới.
+
+## Bản đối chiếu JSONL
+
+[Hướng dẫn chạy parser Python và bộ mẫu JSONL](normalized-README.md).
